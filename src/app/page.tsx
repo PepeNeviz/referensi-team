@@ -31,10 +31,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        router.push("/login");
-      } else {
-        setIsLoadingAuth(false);
+  console.log("Status Auth:", user ? "Login" : "Belum Login"); // TAMBAHKAN INI
+  if (!user) {
+    router.push("/login");
+  } else {
+    setIsLoadingAuth(false);
         const q = query(collection(db, "projects"), orderBy("createdAt", "desc"));
         const unsubscribeData = onSnapshot(q, (snapshot) => {
           const projectList = snapshot.docs.map(doc => ({
@@ -109,13 +110,15 @@ export default function DashboardPage() {
     }
   };
 
-  if (isLoadingAuth) {
+// Ganti bagian if (isLoadingAuth) ini sementara untuk debugging:
+if (isLoadingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-yellow-500" />
+      <div className="min-h-screen flex flex-col items-center justify-center text-gray-500">
+        <Loader2 className="w-8 h-8 animate-spin text-yellow-500 mb-4" />
+        <p>Sedang mengecek status login...</p>
       </div>
     );
-  }
+}
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] pb-10">
