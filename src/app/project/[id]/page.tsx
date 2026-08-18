@@ -3,16 +3,15 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
-// Tambahan: deleteDoc dan updateDoc untuk Hapus & Edit
 import { doc, getDoc, collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, deleteDoc, updateDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
-// Tambahan Icon: Search, Download, Trash2, Pencil
-import { ArrowLeft, Plus, Image as ImageIcon, Loader2, UploadCloud, X, ChevronLeft, ChevronRight, Search, Download, Trash2, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Image as ImageIcon, Loader2, UploadCloud, X, ChevronLeft, ChevronRight, Search, Download, Trash2, Pencil, Tag } from "lucide-react";
 
 interface Reference {
   id: string;
   title: string;
   imageUrls: string[];
+  tag?: string;
 }
 
 export default function ProjectDetailPage() {
@@ -24,12 +23,13 @@ export default function ProjectDetailPage() {
   const [projectName, setProjectName] = useState("Loading...");
   const [references, setReferences] = useState<Reference[]>([]);
   
-  // State Search
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTagFilter, setSelectedTagFilter] = useState("Semua");
 
   // State Modal Upload
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [refTitle, setRefTitle] = useState("");
+  const [refTag, setRefTag] = useState("UI/UX");
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -37,6 +37,7 @@ export default function ProjectDetailPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingRef, setEditingRef] = useState<Reference | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [editTag, setEditTag] = useState("");
 
   // State Gallery
   const [selectedRef, setSelectedRef] = useState<Reference | null>(null);
@@ -65,6 +66,7 @@ export default function ProjectDetailPage() {
             id: doc.id,
             title: doc.data().title,
             imageUrls: doc.data().imageUrls || [],
+            tag: doc.data().tag || "UI/UX",
           }));
           setReferences(refList);
         });
@@ -75,7 +77,6 @@ export default function ProjectDetailPage() {
     return () => unsubscribeAuth();
   }, [projectId, router]);
 
-  // === FITUR UPLOAD ===
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!refTitle.trim() || !selectedFiles || selectedFiles.length === 0) return;
@@ -83,8 +84,8 @@ export default function ProjectDetailPage() {
     setIsUploading(true);
     try {
       const uploadedUrls: string[] = [];
-      const cloudName = "msekrhyq"; // Cloud Name Cloudinary Anda
-      const uploadPreset = "referensi_preset"; // Upload Preset Cloudinary Anda
+      const cloudName = "msekrhyq"; 
+      const uploadPreset = "referensi_preset"; 
 
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
@@ -103,6 +104,7 @@ export default function ProjectDetailPage() {
       await addDoc(collection(db, "references"), {
         projectId,
         title: refTitle,
+        tag: refTag,
         imageUrls: uploadedUrls,
         createdAt: serverTimestamp(),
       });
@@ -117,11 +119,9 @@ export default function ProjectDetailPage() {
     }
   };
 
-  // === FITUR HAPUS ===
   const handleDelete = async (e: React.MouseEvent, refId: string) => {
-    e.stopPropagation(); // Agar tidak membuka gallery saat klik tombol hapus
-    const confirmDelete = window.confirm("Yakin ingin menghapus referensi ini?");
-    if (confirmDelete) {
+    e.stopPropagation();
+    if (window.confirm("Yakin ingin menghapus referensi ini?")) {
       try {
         await deleteDoc(doc(db, "references", refId));
       } catch (error) {
@@ -130,11 +130,11 @@ export default function ProjectDetailPage() {
     }
   };
 
-  // === FITUR EDIT ===
   const openEditModal = (e: React.MouseEvent, item: Reference) => {
     e.stopPropagation();
     setEditingRef(item);
     setEditTitle(item.title);
+    setEditTag(item.tag || "UI/UX");
     setIsEditModalOpen(true);
   };
 
@@ -145,25 +145,22 @@ export default function ProjectDetailPage() {
     try {
       await updateDoc(doc(db, "references", editingRef.id), {
         title: editTitle,
+        tag: editTag,
       });
       setIsEditModalOpen(false);
       setEditingRef(null);
     } catch (error) {
-      alert("Gagal mengubah judul.");
+      alert("Gagal mengubah data.");
     }
   };
 
-  // === FITUR DOWNLOAD GAMBAR ===
   const handleDownloadImage = async () => {
     if (!selectedRef) return;
     const imageUrl = selectedRef.imageUrls[currentImgIndex];
-    
     try {
-      // Mengambil gambar sebagai blob agar bisa didownload langsung
       const response = await fetch(imageUrl);
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
-      
       const link = document.createElement("a");
       link.href = blobUrl;
       link.download = `${selectedRef.title}_${currentImgIndex + 1}.jpg`;
@@ -176,10 +173,12 @@ export default function ProjectDetailPage() {
     }
   };
 
-  // Filter Data berdasarkan Search
-  const filteredReferences = references.filter((item) => 
-    item.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter Search & Tag
+  const filteredReferences = references.filter((item) => {
+    const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTag = selectedTagFilter === "Semua" || item.tag === selectedTagFilter;
+    return matchesSearch && matchesTag;
+  });
 
   if (isLoadingAuth) {
     return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-yellow-500" /></div>;
@@ -202,24 +201,37 @@ export default function ProjectDetailPage() {
       </nav>
 
       <main className="max-w-5xl mx-auto px-4 mt-8">
-        {/* === KOLOM PENCARIAN === */}
+        {/* Search & Filter Tag */}
         {references.length > 0 && (
-          <div className="relative mb-6">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Cari referensi berdasarkan judul..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 shadow-sm transition-all"
-            />
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input 
+                type="text" 
+                placeholder="Cari judul referensi..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 shadow-sm"
+              />
+            </div>
+            <select
+              value={selectedTagFilter}
+              onChange={(e) => setSelectedTagFilter(e.target.value)}
+              className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm font-medium shadow-sm"
+            >
+              <option value="Semua">Semua Tag</option>
+              <option value="UI/UX">UI/UX</option>
+              <option value="Karakter">Karakter</option>
+              <option value="Environment">Environment</option>
+              <option value="Lainnya">Lainnya</option>
+            </select>
           </div>
         )}
 
         {filteredReferences.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-gray-400">
             <ImageIcon className="w-12 h-12 mb-3 text-gray-300" />
-            <p>{references.length === 0 ? "Belum ada referensi di project ini." : "Referensi tidak ditemukan."}</p>
+            <p>Referensi tidak ditemukan.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -227,8 +239,13 @@ export default function ProjectDetailPage() {
               <div 
                 key={item.id} 
                 onClick={() => { setSelectedRef(item); setCurrentImgIndex(0); }}
-                className="group bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col"
+                className="group bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col relative"
               >
+                {/* Badge Tag */}
+                <span className="absolute top-3 left-3 bg-white/90 backdrop-blur text-xs font-semibold px-2.5 py-1 rounded-md shadow-sm z-10 text-gray-800">
+                  {item.tag}
+                </span>
+
                 <div className="aspect-video bg-gray-100 relative overflow-hidden">
                   {item.imageUrls[0] ? (
                     <img src={item.imageUrls[0]} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
@@ -242,14 +259,13 @@ export default function ProjectDetailPage() {
                   )}
                 </div>
                 
-                {/* === AREA JUDUL & TOMBOL EDIT/DELETE === */}
                 <div className="p-4 flex items-start justify-between gap-2 flex-1">
                   <h3 className="font-semibold text-gray-900 text-sm">{item.title}</h3>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={(e) => openEditModal(e, item)} className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-md transition-colors">
+                    <button onClick={(e) => openEditModal(e, item)} className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-md">
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button onClick={(e) => handleDelete(e, item.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors">
+                    <button onClick={(e) => handleDelete(e, item.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -260,26 +276,23 @@ export default function ProjectDetailPage() {
         )}
       </main>
 
-      {/* === MODAL GALLERY (Dengan Tombol Download) === */}
+      {/* Modal Gallery */}
       {selectedRef && (
         <div className="fixed inset-0 bg-black/95 z-[100] flex flex-col items-center justify-center animate-in fade-in" onClick={() => setSelectedRef(null)}>
           <div className="absolute top-0 w-full p-4 flex justify-between items-center bg-gradient-to-b from-black/70 to-transparent z-10">
             <h3 className="text-white font-medium">{selectedRef.title}</h3>
             <div className="flex items-center gap-3">
-              {/* TOMBOL DOWNLOAD DI GALLERY */}
-              <button onClick={(e) => { e.stopPropagation(); handleDownloadImage(); }} className="p-2 text-gray-300 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors" title="Download Gambar">
+              <button onClick={(e) => { e.stopPropagation(); handleDownloadImage(); }} className="p-2 text-gray-300 hover:text-white bg-white/10 hover:bg-white/20 rounded-full" title="Download">
                 <Download className="w-5 h-5" />
               </button>
-              <button onClick={() => setSelectedRef(null)} className="p-2 text-gray-300 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors">
+              <button onClick={() => setSelectedRef(null)} className="p-2 text-gray-300 hover:text-white bg-white/10 hover:bg-white/20 rounded-full">
                 <X className="w-6 h-6" />
               </button>
             </div>
           </div>
-
           <div className="relative w-full max-w-6xl max-h-[80vh] flex items-center justify-center p-4">
             <img src={selectedRef.imageUrls[currentImgIndex]} alt="Full view" className="max-w-full max-h-[80vh] object-contain rounded-md" onClick={(e) => e.stopPropagation()} />
           </div>
-
           {selectedRef.imageUrls.length > 1 && (
             <>
               {currentImgIndex > 0 && (
@@ -300,51 +313,62 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {/* === MODAL EDIT JUDUL === */}
+      {/* Modal Edit */}
       {isEditModalOpen && editingRef && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95">
-            <div className="p-6">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Edit Judul Referensi</h2>
-              <form onSubmit={handleEdit}>
-                <input type="text" autoFocus value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 mb-6" required />
-                <div className="flex gap-3">
-                  <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl">Batal</button>
-                  <button type="submit" className="flex-1 px-4 py-2.5 text-sm font-semibold text-black bg-yellow-400 hover:bg-yellow-500 rounded-xl">Simpan Perubahan</button>
-                </div>
-              </form>
-            </div>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Edit Referensi</h2>
+            <form onSubmit={handleEdit} className="space-y-4">
+              <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400" required />
+              <select value={editTag} onChange={(e) => setEditTag(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400">
+                <option value="UI/UX">UI/UX</option>
+                <option value="Karakter">Karakter</option>
+                <option value="Environment">Environment</option>
+                <option value="Lainnya">Lainnya</option>
+              </select>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 rounded-xl">Batal</button>
+                <button type="submit" className="flex-1 px-4 py-2.5 text-sm font-semibold text-black bg-yellow-400 rounded-xl">Simpan</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* === MODAL UPLOAD === */}
+      {/* Modal Upload */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-6">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Tambah Referensi Baru</h2>
-              <form onSubmit={handleUpload} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Judul Referensi</label>
-                  <input type="text" value={refTitle} onChange={(e) => setRefTitle(e.target.value)} placeholder="Misal: Inspirasi Header Web..." className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400" required />
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Tambah Referensi Baru</h2>
+            <form onSubmit={handleUpload} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Judul</label>
+                <input type="text" value={refTitle} onChange={(e) => setRefTitle(e.target.value)} placeholder="Contoh: Style Menu Utama..." className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Kategori / Tag</label>
+                <select value={refTag} onChange={(e) => setRefTag(e.target.value)} className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400">
+                  <option value="UI/UX">UI/UX</option>
+                  <option value="Karakter">Karakter</option>
+                  <option value="Environment">Environment</option>
+                  <option value="Lainnya">Lainnya</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Gambar</label>
+                <div className="relative border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:bg-gray-50">
+                  <input type="file" multiple accept="image/*" onChange={(e) => setSelectedFiles(e.target.files)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" required />
+                  <UploadCloud className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                  <p className="text-sm text-gray-500">{selectedFiles && selectedFiles.length > 0 ? `${selectedFiles.length} file dipilih` : "Klik atau seret gambar ke sini"}</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Gambar (Bisa lebih dari 1)</label>
-                  <div className="relative border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:bg-gray-50 transition-colors">
-                    <input type="file" multiple accept="image/*" onChange={(e) => setSelectedFiles(e.target.files)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" required />
-                    <UploadCloud className="w-8 h-8 mx-auto text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-500">{selectedFiles && selectedFiles.length > 0 ? <span className="text-yellow-600 font-semibold">{selectedFiles.length} file terpilih</span> : "Klik atau tarik gambar ke sini"}</p>
-                  </div>
-                </div>
-                <div className="flex gap-3 mt-6">
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl">Batal</button>
-                  <button type="submit" disabled={isUploading} className="flex-1 px-4 py-2.5 text-sm font-semibold text-black bg-yellow-400 hover:bg-yellow-500 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2">
-                    {isUploading ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengupload...</> : "Simpan Referensi"}
-                  </button>
-                </div>
-              </form>
-            </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 rounded-xl">Batal</button>
+                <button type="submit" disabled={isUploading} className="flex-1 px-4 py-2.5 text-sm font-semibold text-black bg-yellow-400 rounded-xl flex items-center justify-center gap-2">
+                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Simpan"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
